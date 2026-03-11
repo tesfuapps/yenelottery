@@ -176,7 +176,17 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📢 Broadcast", callback_data="admin_broadcast"),
     )
     builder.row(
+        InlineKeyboardButton(text="👤 Users List", callback_data="admin_user_list"),
         InlineKeyboardButton(text="🔙 Back", callback_data="main_menu"),
+    )
+    return builder.as_markup()
+
+
+def broadcast_cta_keyboard() -> InlineKeyboardMarkup:
+    """Call-to-action keyboard for broadcast messages."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="🎰 Join a Lottery Now!", callback_data="join_lottery")
     )
     return builder.as_markup()
 

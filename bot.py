@@ -22,6 +22,8 @@ from database.connection import close_pool
 # ── Routers ───────────────────────────────────────────────────────────────────
 from handlers import user, lottery, payment, admin
 from aiogram.types import BotCommand
+from utils.automation import auto_execute_draw, spawn_from_templates
+import database.queries as db
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Logging
@@ -36,6 +38,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger("bot")
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Background Tasks
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def scheduler_loop(bot: Bot):
+    """Periodically checks for expired lotteries and recurring tasks."""
+    logger.info("⏰ Background scheduler started.")
+    while True:
+        try:
+            # 1. Auto-Draw Expired Lotteries
+            expired = await db.get_expired_lotteries()
+            for lot in expired:
+                logger.info(f"🎯 Auto-drawing expired lottery: {lot['title']} (ID: {lot['id']})")
+                await auto_execute_draw(bot, lot['id'])
+            
+            # 2. Spawn Recurring Lotteries
+            await spawn_from_templates(bot)
+            
+        except Exception as e:
+            logger.error(f"❌ Error in scheduler_loop: {e}")
+            
+        await asyncio.sleep(60) # Check every minute
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Startup & Shutdown hooks
@@ -59,6 +84,9 @@ async def on_startup(bot: Bot) -> None:
     
     # Set up commands menu
     await setup_bot_commands(bot)
+
+    # Start background scheduler
+    asyncio.create_task(scheduler_loop(bot))
 
     # Log bot identity
     me = await bot.get_me()

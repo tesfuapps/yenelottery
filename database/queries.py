@@ -77,6 +77,20 @@ async def get_all_registered_users():
         rows = await cursor.fetchall()
         return [r['tg_id'] for r in rows]
 
+async def get_all_users_detailed():
+    """Retrieve all users with detailed info for admin view."""
+    async with get_conn() as conn:
+        conn.row_factory = aiosqlite.Row
+        cursor = await conn.execute(
+            """
+            SELECT tg_id, full_name, username, phone, referral_points, registered_at 
+            FROM users 
+            ORDER BY registered_at DESC
+            """
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
 async def update_user_phone(tg_id: int, phone: str) -> None:
     async with get_conn() as conn:
         conn.row_factory = aiosqlite.Row
@@ -311,3 +325,57 @@ async def get_user_stats(tg_id: int):
         )
         row = await cursor.fetchone()
         return dict(row)
+
+async def get_advanced_stats():
+    """Detailed platform statistics for admin dashboard."""
+    async with get_conn() as conn:
+        conn.row_factory = aiosqlite.Row
+        
+        # Today's Revenue (Approved transactions in last 24h)
+        # SQLite doesn't have a built-in '24h' interval easily like Postgres, so we use date functions.
+        q_revenue = "SELECT SUM(amount) as revenue FROM transactions WHERE status = 'approved' AND submitted_at >= datetime('now', '-1 day')"
+        
+        # New Users Today
+        q_new_users = "SELECT COUNT(*) as count FROM users WHERE registered_at >= datetime('now', '-1 day')"
+        
+        # Tickets sold (Last 24h)
+        q_new_tickets = "SELECT COUNT(*) as count FROM tickets WHERE status = 'verified' AND issued_at >= datetime('now', '-1 day')"
+        
+        res = {}
+        c = await conn.execute(q_revenue)
+        res['rev_24h'] = (await c.fetchone())['revenue'] or 0.0
+        
+        c = await conn.execute(q_new_users)
+        res['users_24h'] = (await c.fetchone())['count']
+        
+        c = await conn.execute(q_new_tickets)
+        res['tickets_24h'] = (await c.fetchone())['count']
+        
+        return res
+
+async def get_enabled_templates():
+    """Fetch all active lottery templates for spawning."""
+    async with get_conn() as conn:
+        conn.row_factory = aiosqlite.Row
+        cursor = await conn.execute("SELECT * FROM lottery_templates WHERE is_enabled = 1")
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+async def update_template_spawn_time(template_id: int):
+    """Mark a template as recently spawned."""
+    async with get_conn() as conn:
+        await conn.execute(
+            "UPDATE lottery_templates SET last_spawned_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (template_id,)
+        )
+        await conn.commit()
+
+async def get_expired_lotteries():
+    """Find active lotteries where the draw date has passed."""
+    async with get_conn() as conn:
+        conn.row_factory = aiosqlite.Row
+        cursor = await conn.execute(
+            "SELECT * FROM lotteries WHERE is_active = 1 AND draw_date < CURRENT_TIMESTAMP"
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]

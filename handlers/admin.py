@@ -36,6 +36,7 @@ from keyboards.inline import (
     confirm_keyboard,
     manage_lotteries_keyboard,
     admin_review_keyboard,
+    broadcast_cta_keyboard,
 )
 from states.forms import AdminCreateLottery, AdminRejectReason, AdminBroadcast
 from utils.helpers import is_admin, esc, format_lottery, fmt_ticket_no
@@ -714,10 +715,13 @@ async def process_admin_broadcast(message: Message, state: FSMContext, bot: Bot)
     success = 0
     failed = 0
     
+    # Enhanced UI: Attach "Join Lottery" button to the copied message
+    keyboard = broadcast_cta_keyboard()
+    
     for user_id in users:
         try:
-            # Copy the message to the user (handles text, photos, etc.)
-            await message.copy_to(chat_id=user_id)
+            # Copy the message to the user and attach the CTA button
+            await message.copy_to(chat_id=user_id, reply_markup=keyboard)
             success += 1
             await asyncio.sleep(0.05) # Rate limiting
         except Exception:
@@ -738,36 +742,71 @@ async def cb_platform_stats(callback: CallbackQuery) -> None:
         
     # Implement basic stats. In a real app index these properly.
     # For now, quick counts.
+    # Fetch basic counts
     async with db.get_conn() as conn:
         conn.row_factory = aiosqlite.Row
-        
-        # Total users
         c = await conn.execute("SELECT COUNT(*) FROM users")
         total_users = (await c.fetchone())[0]
-        
-        # Total lotteries
         c = await conn.execute("SELECT COUNT(*) FROM lotteries")
         total_lots = (await c.fetchone())[0]
-        
-        # Total tickets sold
         c = await conn.execute("SELECT COUNT(*) FROM tickets WHERE status != 'rejected'")
         total_tickets = (await c.fetchone())[0]
-        
-        # Total revenue (approx)
         c = await conn.execute("SELECT SUM(amount) FROM transactions WHERE status = 'approved'")
         revenue = (await c.fetchone())[0] or 0.0
+
+    # Fetch 24h metrics
+    adv = await db.get_advanced_stats()
 
     stats_text = (
         f"📊 <b>Platform Statistics</b>\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"👥 <b>Total Users:</b> {total_users}\n"
         f"🎱 <b>Total Lotteries:</b> {total_lots}\n"
-        f"🎟️ <b>Tickets Sold:</b> {total_tickets}\n"
-        f"💰 <b>Total Revenue:</b> {revenue:,.2f} ETB\n"
+        f"🎟️ <b>Total Tickets:</b> {total_tickets}\n"
+        f"💰 <b>Total Revenue:</b> {revenue:,.2f} ETB\n\n"
+        f"📈 <b>Last 24 Hours:</b>\n"
+        f"💵 Revenue: <b>{adv['rev_24h']:,.2f} ETB</b>\n"
+        f"🆕 New Users: <b>{adv['users_24h']}</b>\n"
+        f"🎟️ Tickets Sold: <b>{adv['tickets_24h']}</b>\n"
     )
     
     await callback.message.edit_text(
         stats_text,
+        parse_mode="HTML",
+        reply_markup=admin_panel_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_user_list")
+async def cb_admin_user_list(callback: CallbackQuery) -> None:
+    if not await _require_admin(callback):
+        return
+        
+    users = await db.get_all_users_detailed()
+    if not users:
+        await callback.message.edit_text("❌ No users found.", reply_markup=admin_panel_keyboard())
+        return
+
+    text = "👤 <b>Registered Users List</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+    for u in users:
+        username = f"@{esc(u['username'])}" if u['username'] else "N/A"
+        date_str = u['registered_at'][:10] if u['registered_at'] else "N/A"
+        text += (
+            f"👤 {esc(u['full_name'])}\n"
+            f"🔖 {username} | 🆔 <code>{u['tg_id']}</code>\n"
+            f"📱 {esc(u['phone'] or 'No Phone')}\n"
+            f"💎 Points: {u['referral_points']} | 📅 {date_str}\n"
+            f"───────────────────\n"
+        )
+    
+    # If text is too long (Telegram limit is 4096), we should truncate or paginate.
+    # For now, let's truncate with a note if it's too big.
+    if len(text) > 4000:
+        text = text[:3900] + "\n\n<i>... (list truncated due to size)</i>"
+
+    await callback.message.edit_text(
+        text,
         parse_mode="HTML",
         reply_markup=admin_panel_keyboard()
     )

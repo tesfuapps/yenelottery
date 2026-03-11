@@ -86,6 +86,21 @@ CREATE TABLE IF NOT EXISTS draw_history (
 );
 """
 
+CREATE_LOTTERY_TEMPLATES = """
+CREATE TABLE IF NOT EXISTS lottery_templates (
+    id              INTEGER         PRIMARY KEY AUTOINCREMENT,
+    title           TEXT            NOT NULL,
+    description     TEXT,
+    price_per_ticket REAL           NOT NULL,
+    max_slots       INTEGER         NOT NULL,
+    prize_pool      TEXT            NOT NULL,
+    frequency       TEXT            DEFAULT 'daily', -- 'daily', 'weekly'
+    is_enabled      BOOLEAN         DEFAULT 1,
+    last_spawned_at TIMESTAMP,
+    created_at      TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_tickets_lottery ON tickets(lottery_id);",
     "CREATE INDEX IF NOT EXISTS idx_tickets_holder ON tickets(holder_tg_id);",
@@ -103,6 +118,7 @@ async def init_db() -> None:
         await conn.execute(CREATE_TICKETS)
         await conn.execute(CREATE_TRANSACTIONS)
         await conn.execute(CREATE_DRAW_HISTORY)
+        await conn.execute(CREATE_LOTTERY_TEMPLATES)
         for idx in CREATE_INDEXES:
             await conn.execute(idx)
         try:
