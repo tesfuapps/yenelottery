@@ -186,7 +186,7 @@ def broadcast_cta_keyboard() -> InlineKeyboardMarkup:
     """Call-to-action keyboard for broadcast messages."""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="🎰 Join a Lottery Now!", callback_data="join_lottery")
+        InlineKeyboardButton(text="🎰 Join a Lottery Now!", callback_data="view_lotteries")
     )
     return builder.as_markup()
 
